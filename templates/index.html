@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>IoT Dashboard</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; background: #f5f5f5; }
+    h1, h2 { color: #333; }
+    .status { margin-bottom: 1rem; color: #666; font-size: 0.9rem; }
+    .devices { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 2rem; }
+    .card {
+      background: white; padding: 1rem 1.5rem; border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1); min-width: 220px;
+    }
+    .card .name { font-weight: 600; margin-bottom: 0.3rem; }
+    .card .meta { color: #666; font-size: 0.85rem; }
+    .dot {
+      display: inline-block; width: 10px; height: 10px;
+      border-radius: 50%; margin-right: 6px;
+    }
+    .dot.online  { background: #2ecc71; }
+    .dot.offline { background: #e74c3c; }
+    table { border-collapse: collapse; width: 100%; background: white; }
+    th, td { padding: 0.6rem 1rem; border-bottom: 1px solid #ddd; text-align: left; }
+    th { background: #4a90d9; color: white; }
+    tr.error td { background: #ffe5e5; color: #b00020; }
+  </style>
+</head>
+<body>
+  <h1>IoT Dashboard</h1>
+
+  <h2>Устройства</h2>
+  <div class="devices" id="devices">Загрузка...</div>
+
+  <h2>Последние показания</h2>
+  <div class="status" id="status"></div>
+  <table>
+    <thead>
+      <tr>
+        <th>Устройство</th>
+        <th>Температура (°C)</th>
+        <th>Влажность (%)</th>
+        <th>Ошибка</th>
+        <th>Время (UTC)</th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+
+  <script>
+    function fmtAgo(sec) {
+      if (sec < 60) return `${sec} сек назад`;
+      if (sec < 3600) return `${Math.floor(sec / 60)} мин назад`;
+      return `${Math.floor(sec / 3600)} ч назад`;
+    }
+
+    async function refreshDevices() {
+      try {
+        const res = await fetch('/api/devices');
+        const devices = await res.json();
+        const box = document.getElementById('devices');
+
+        if (devices.length === 0) {
+          box.innerHTML = '<div class="card">Нет подключённых устройств</div>';
+          return;
+        }
+
+        box.innerHTML = devices.map(d => `
+          <div class="card">
+            <div class="name">
+              <span class="dot ${d.online ? 'online' : 'offline'}"></span>
+              ${d.device_id}
+            </div>
+            <div class="meta">Статус: ${d.online ? 'онлайн' : 'офлайн'}</div>
+            <div class="meta">Последний раз: ${fmtAgo(d.seconds_ago)}</div>
+            <div class="meta">Всего записей: ${d.readings}</div>
+          </div>`).join('');
+      } catch (e) {
+        document.getElementById('devices').textContent = 'Ошибка получения статуса';
+      }
+    }
+
+    async function refreshData() {
+      try {
+        const res = await fetch('/api/data?limit=50');
+        const data = await res.json();
+        const tbody = document.getElementById('rows');
+
+        tbody.innerHTML = data.map(r => `
+          <tr class="${r.error ? 'error' : ''}">
+            <td>${r.device_id}</td>
+            <td>${r.temperature ?? '—'}</td>
+            <td>${r.humidity ?? '—'}</td>
+            <td>${r.error ?? '—'}</td>
+            <td>${r.timestamp}</td>
+          </tr>`).join('');
+
+        document.getElementById('status').textContent =
+          `Обновлено: ${new Date().toLocaleTimeString()} • записей: ${data.length}`;
+      } catch (e) {
+        document.getElementById('status').textContent = 'Ошибка соединения с сервером';
+      }
+    }
+
+    function refreshAll() {
+      refreshDevices();
+      refreshData();
+    }
+
+    refreshAll();
+    setInterval(refreshAll, 5000);
+  </script>
+</body>
+</html>
